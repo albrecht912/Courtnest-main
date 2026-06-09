@@ -42,6 +42,14 @@ class BookingController extends Controller
         $newStart = Carbon::parse($request->start_time);
         $newEnd = (clone $newStart)->addHours($duration);
 
+        $latestEndTime = Carbon::parse('23:00:00');
+
+if ($newEnd->gt($latestEndTime)) {
+    return back()->withErrors([
+        'error' => 'Booking cannot exceed the court operating hours.'
+    ])->withInput();
+} // Enhanced for users from booking invalid times, negative duration, past dates, or dates more than 3 months ahead.
+
         if ($request->booking_date == now()->toDateString()) {
             if ($newStart->lt(now())) {
                 return back()->withErrors(['error' => 'You cannot book a time slot that has already passed today.'])->withInput();
