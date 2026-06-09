@@ -29,6 +29,131 @@ The specific goals are:
 
 * **I. Input Validation:**
 
+* Input validation was enhanced in the Courtnest web application to ensure that users can only submit correct, safe, and logical data. The validation was applied     on both the client side and server side. Client-side validation helps guide users before they submit the form, while server-side validation ensures that            manipulated or invalid requests are rejected before being processed by the system.
+
+* 1. Registration Input Validation
+    The registration form was enhanced by adding stronger validation rules for user details such as name, email, phone number, and password. This ensures that         users provide complete and valid information before an account is created.
+*Code snippet:*
+```php
+Validator::make($input, [
+'name' => ['required', 'string', 'max:255'],
+'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+'phone_number' => ['required', 'string', 'max:20'],
+'password' => [ 'required', 'string', 'min:12', 'confirmed', 'regex:/[a-z]/', 'regex:/[A-Z]/', 'regex:/[^A-Za-z0-9]/', ], 'terms' => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '', ], [ 'password.min' => 'Password must be at least 12 characters.', 'password.regex' => 'Password must contain uppercase letter, lowercase letter, and special character.',
+ ])->validate();
+```
+
+The password validation was strengthened by requiring a minimum of 12 characters, at least one lowercase letter, at least one uppercase letter, and at least one special character. This helps prevent users from registering with weak passwords.
+
+2. Booking Form Client-Side Validation
+Client-side validation was added to the booking form using HTML5 validation attributes. The court, booking date, duration, and start time fields are required before the form can be submitted.
+<select name="court_id" id="court_id" required>
+<select name="duration" id="duration" required>
+<select name="start_time" id="start_time" required>
+
+The booking date input was also restricted using the min and max attributes. This prevents users from selecting past dates or dates more than 3 months in advance.
+Code snippet:
+
+```php
+<input type="date" name="booking_date"
+id="booking_date"
+required
+min="{{ date('Y-m-d') }}"
+max="{{ now()->addMonths(3)->toDateString() }}"
+value="{{ date('Y-m-d') }}">
+```
+
+This enhancement makes the booking calendar more logical because users cannot book dates from the past or dates too far into the future.
+
+3. Passed and Booked Slot Validation
+
+The booking interface was improved by separating the labels for unavailable time slots. Previously, unavailable slots were not clearly separated. The enhanced version now shows:
+1. Passed for time slots that have already passed today.
+2. Booked for time slots that are already reserved by another user.
+
+Code snippet:
+
+```php
+const isPast = (selectedDate === todayStr && optionHour <= currentHour);
+const selectedEndHour = optionHour + selectedDuration;
+
+const isBooked = bookedSlots.some(slot => {
+    if (slot.court_id != selectedCourt || slot.booking_date !== selectedDate) return false;
+
+    const bookedStartHour = parseInt(slot.start_hour);
+    const bookedEndHour = bookedStartHour + parseInt(slot.duration);
+
+    return optionHour < bookedEndHour && selectedEndHour > bookedStartHour;
+});
+
+if (!option.dataset.originalText) {
+    option.dataset.originalText = option.text;
+}
+
+option.text = option.dataset.originalText;
+
+if (isPast) {
+    option.disabled = true;
+    option.text += ' (Passed)';
+} else if (isBooked) {
+    option.disabled = true;
+    option.text += ' (Booked)';
+} else {
+    option.disabled = false;
+}
+
+This validation improves user experience and prevents users from selecting unavailable time slots from the interface.
+
+4. Booking Form Server-Side Validation
+
+Server-side validation was added in BookingController.php to ensure that invalid data cannot be processed even if users manipulate the HTML form or send requests manually. This is important because client-side validation can be bypassed.
+php
+$request->validate([
+'court_id' => 'required|integer|exists:courts,id',
+'booking_date' => 'required|date|after_or_equal:today|before_or_equal:' . now()->addMonths(3)->toDateString(),
+'start_time' => 'required|date_format:H:i:s|in:08:00:00,09:00:00,10:00:00,11:00:00,12:00:00,13:00:00,14:00:00,15:00:00,16:00:00,17:00:00,18:00:00,19:00:00,20:00:00,21:00:00,22:00:00',
+'duration' => 'required|integer|min:1|max:3',
+]);
+```
+
+The server-side validation checks that the selected court exists in the database, the booking date is valid, the start time follows the correct format, and the duration is between 1 and 3 hours. This prevents users from submitting invalid court IDs, past dates, invalid times, negative durations, or overly long bookings.
+
+5. Past Time Validation
+
+The system also checks if the selected booking time has already passed on the current day. This prevents users from booking a time slot that is no longer available.
+Code snippet:
+
+```php
+if ($request->booking_date == now()->toDateString()) {
+    if ($newStart->lt(now())) {
+    return back()->withErrors([
+    'error' => 'You cannot book a time slot that has already passed today.'
+    ])->withInput(); }
+```
+
+
+6. Overlapping Booking Validation
+   The system checks existing bookings to prevent two users from booking the same court at overlapping times.
+   Code snippet:
+
+```php
+$overlap = Booking::where('court_id', $request->court_id)
+->where('booking_date', $request->booking_date)
+->where('status', '!=', 'cancelled')
+->get()
+->filter(function ($existing) use ($newStart, $newEnd) {
+    $existingStart = Carbon::parse($existing->start_time);
+    $existingEnd = (clone $existingStart)->addHours((int) $existing->duration);
+
+return $newStart->lt($existingEnd) && $newEnd->gt($existingStart);
+})->isNotEmpty();
+if ($overlap) {
+return back()->withErrors([
+'error' => 'Booked! The court is already reserved during this time range.'
+])->withInput(); }
+```
+
+
 * **II. Authentication:**
 #### 🔒 Security & Authentication Features
 The application implments security mechanism built upon Laravel Fortify to protect user data and prevent unauthorized access. For session lifetime, user must set duration in their .env file first.
