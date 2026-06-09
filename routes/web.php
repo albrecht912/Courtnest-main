@@ -34,9 +34,6 @@ Route::middleware([
     // 5. Process Payment (Saves Session to Database)
     Route::post('/bookings/pay', [BookingController::class, 'pay'])->name('bookings.pay');
 
-    // 6. Cancel Existing Booking
-    Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancel'])->name('bookings.cancel');
-
 });
 
 require __DIR__.'/settings.php';
