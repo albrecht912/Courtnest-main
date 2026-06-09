@@ -36,6 +36,7 @@ The specific goals are:
 * 1. Registration Input Validation
     The registration form was enhanced by adding stronger validation rules for user details such as name, email, phone number, and password. This ensures that         users provide complete and valid information before an account is created.
 *Code snippet:*
+
 ```php
 Validator::make($input, [
 'name' => ['required', 'string', 'max:255'],
@@ -47,7 +48,7 @@ Validator::make($input, [
 
 The password validation was strengthened by requiring a minimum of 12 characters, at least one lowercase letter, at least one uppercase letter, and at least one special character. This helps prevent users from registering with weak passwords.
 
-2. Booking Form Client-Side Validation
+* 2. Booking Form Client-Side Validation
 Client-side validation was added to the booking form using HTML5 validation attributes. The court, booking date, duration, and start time fields are required before the form can be submitted.
 <select name="court_id" id="court_id" required>
 <select name="duration" id="duration" required>
@@ -67,7 +68,7 @@ value="{{ date('Y-m-d') }}">
 
 This enhancement makes the booking calendar more logical because users cannot book dates from the past or dates too far into the future.
 
-3. Passed and Booked Slot Validation
+* 3. Passed and Booked Slot Validation
 
 The booking interface was improved by separating the labels for unavailable time slots. Previously, unavailable slots were not clearly separated. The enhanced version now shows:
 1. Passed for time slots that have already passed today.
@@ -106,7 +107,7 @@ if (isPast) {
 
 This validation improves user experience and prevents users from selecting unavailable time slots from the interface.
 
-4. Booking Form Server-Side Validation
+* 4. Booking Form Server-Side Validation
 
 Server-side validation was added in BookingController.php to ensure that invalid data cannot be processed even if users manipulate the HTML form or send requests manually. This is important because client-side validation can be bypassed.
 php
@@ -120,7 +121,7 @@ $request->validate([
 
 The server-side validation checks that the selected court exists in the database, the booking date is valid, the start time follows the correct format, and the duration is between 1 and 3 hours. This prevents users from submitting invalid court IDs, past dates, invalid times, negative durations, or overly long bookings.
 
-5. Past Time Validation
+* 5. Past Time Validation
 
 The system also checks if the selected booking time has already passed on the current day. This prevents users from booking a time slot that is no longer available.
 Code snippet:
@@ -134,7 +135,7 @@ if ($request->booking_date == now()->toDateString()) {
 ```
 
 
-6. Overlapping Booking Validation
+* 6. Overlapping Booking Validation
    The system checks existing bookings to prevent two users from booking the same court at overlapping times.
    Code snippet:
 
