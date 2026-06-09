@@ -81,15 +81,16 @@ class BookingController extends Controller
 
     $court = Court::findOrFail($request->court_id);
 
-    $tempBooking = [
-        'court_id' => $request->court_id,
-        'court_name' => $court->name,
-        'sport_type' => $court->sport_type,
-        'booking_date' => $request->booking_date,
-        'start_time' => $newStart->toTimeString(),
-        'duration' => $duration,
-        'total_price' => $court->price_per_hour * $duration,
-    ];
+        $tempBooking = [
+            'user_session_id' => Auth::id(), // Save logged-in user ID to session for validation     
+            'court_id' => $request->court_id,
+            'court_name' => $court->name,
+            'sport_type' => $court->sport_type,
+            'booking_date' => $request->booking_date,
+            'start_time' => $newStart->toTimeString(),
+            'duration' => $duration,
+            'total_price' => $court->price_per_hour * $duration,
+        ];
 
     session(['pending_booking' => $tempBooking]);
 
@@ -102,6 +103,12 @@ class BookingController extends Controller
 
         if (!$booking) {
             return redirect()->route('bookings.create')->withErrors(['error' => 'No pending booking found.']);
+        }
+
+         // Check if the session belongs to the currently logged-in user
+        if ($booking['user_session_id'] !== Auth::id()) {
+            session()->forget('pending_booking');
+            abort(403, 'Unauthorized action: Session mismatch.');
         }
         
         $booking = (object) $booking;
@@ -117,13 +124,23 @@ class BookingController extends Controller
             return redirect()->route('bookings.create')->withErrors(['error' => 'Payment session expired.']);
         }
 
+         // Verify the checkout session belongs to the logged-in user
+        if ($data['user_session_id'] !== Auth::id()) {
+            session()->forget('pending_booking');
+            abort(403, 'Unauthorized action.');
+        }
+
+        // Fresh database lookup to calculate the correct price right before saving
+        $court = Court::findOrFail($data['court_id']);
+        $validatedPrice = $court->price_per_hour * (int)$data['duration'];
+        
         Booking::create([
             'user_id' => Auth::id(),
             'court_id' => $data['court_id'],
             'booking_date' => $data['booking_date'],
             'start_time' => $data['start_time'],
             'duration' => $data['duration'],
-            'total_price' => $data['total_price'],
+            'total_price' => $validatedPrice,
             'status' => 'upcoming',
         ]);
 
