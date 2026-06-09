@@ -2,7 +2,7 @@
 
 * **GROUP MEMBER:** 
 IRFAN HAKEEM BIN KHAIRUDIN (2318729)
-
+FOFANA MAMOUDOU KADER (1725503)
 
 * **PROJECT TITLE:** COURTNEST - COURT BOOKING SYSTEM
 
@@ -102,6 +102,90 @@ Explanation: At the final step when the user pays, we double-check their identit
 * **IV. XSS and CSRF:**
 
 * **V. Database Security Principles:**
+* SQL Injection Prevention
+* The Problem: SQL Injection occurs when user input is directly concatenated into SQL queries, allowing attackers to execute malicious database commands.
+
+**Before (Vulnerable approach):**
+```php
+$results = DB::select("SELECT * FROM users WHERE id = $userId");
+// Attacker could pass: ?id=1; DROP TABLE users; --
+```
+**After (Enhanced — Eloquent ORM with PDO parameter binding):**
+All database queries in Courtnest use Laravel's **Eloquent ORM**, which internally uses **PDO prepared statements**. User input is always treated as data, never as executable SQL code.
+
+```php
+// BookingController.php — All queries use Eloquent
+
+// Retrieving courts and bookings
+$courts = Court::all();
+$bookedSlots = Booking::where('booking_date', '>=', now()->toDateString())
+    ->where('status', '!=', 'cancelled')
+    ->get();
+
+// Creating a booking
+Booking::create([
+    'user_id'      => Auth::id(),
+    'court_id'     => $data['court_id'],
+    'booking_date' => $data['booking_date'],
+    'start_time'   => $data['start_time'],
+    'duration'     => $data['duration'],
+    'total_price'  => $data['total_price'],
+    'status'       => 'upcoming',
+]);
+
+// Finding records
+$court = Court::findOrFail($request->court_id);
+
+// Updating records
+$booking->update(['status' => 'cancelled']);
+
+// User's booking history
+$bookings = $user->bookings()->with('court')->latest()->get();
+```
+
+All values passed to Eloquent are automatically **parameter-bound** by PDO, preventing SQL injection entirely.
+
+---
+
+*Credential Security
+
+* The Problem: Hardcoding database credentials in config files exposes them if code is pushed to public repositories.
+
+**Before (Hardcoded credentials):**
+```php
+'mysql' => [
+    'username' => 'root',
+    'password' => 'secret123',   // Exposed!
+];
+```
+
+**After (Credentials in `.env` file):**
+
+Credentials are stored in `.env` (listed in `.gitignore`, never committed) and accessed via Laravel's `env()` helper:
+
+```env
+# .env (NOT committed to GitHub, each developer has their own)
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=courtnest_db
+DB_USERNAME=root
+DB_PASSWORD=
+```
+
+```php
+// config/database.php — Reads from .env
+'mysql' => [
+    'host'     => env('DB_HOST', '127.0.0.1'),
+    'port'     => env('DB_PORT', '3306'),
+    'database' => env('DB_DATABASE', 'laravel'),
+    'username' => env('DB_USERNAME', 'root'),
+    'password' => env('DB_PASSWORD', ''),
+];
+```
+
+A template file `.env.example` with placeholder values is committed instead, and `.env` is excluded from version control via `.gitignore`.
+
 
 * **VI. File Security Principles:**
 
