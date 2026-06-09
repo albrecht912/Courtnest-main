@@ -32,11 +32,11 @@ class BookingController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'court_id' => 'required|exists:courts,id',
-            'booking_date' => 'required|date|after_or_equal:today',
-            'start_time' => 'required',
-            'duration' => 'required|integer|min:1|max:3', 
-        ]);
+    'court_id' => 'required|integer|exists:courts,id',
+    'booking_date' => 'required|date|after_or_equal:today|before_or_equal:' . now()->addMonths(3)->toDateString(),
+    'start_time' => 'required|date_format:H:i:s|in:08:00:00,09:00:00,10:00:00,11:00:00,12:00:00,13:00:00,14:00:00,15:00:00,16:00:00,17:00:00,18:00:00,19:00:00,20:00:00,21:00:00,22:00:00',
+    'duration' => 'required|integer|min:1|max:3',
+]); // Enhanced for input validation//
 
         $duration = (int)$request->duration;
         $newStart = Carbon::parse($request->start_time);
