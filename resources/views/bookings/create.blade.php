@@ -61,7 +61,7 @@
                         </div>
                     @endif
 
-                    <div id="booking-data-bridge" data-booked='@json($bookedSlots)'></div>
+                    <div id="booking-data-bridge" data-booked="{{ json_encode($bookedSlots, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}"></div>
 
                     <form action="{{ route('bookings.store') }}" method="POST" id="bookingForm" class="space-y-10">
                         @csrf
