@@ -29,6 +29,49 @@ The specific goals are:
 * **I. Input Validation:**
 
 * **II. Authentication:**
+## 🔒 Security & Authentication Features
+The application implments security mechanism built upon Laravel Fortify to protect user data and prevent unauthorized access. For session lifetime, user must set duration in their .env file first.
+
+### 1. Brute-Force Login Protection
+* **Implementation:** `app/Providers/FortifyServiceProvider.php`
+* **Mechanism:** To prevent automated brute-force attacks, the application implements strict IP-based and credential-based rate limiting. 
+* **Behavior:** If a user or malicious actor attempts to log in and fails **5 consecutive times**, their IP address/account is automatically blocked from further attempts for a designated cooldown period (1 minute by default).
+
+**Code snippet:**
+```php
+        RateLimiter::for('login', function (Request $request) {
+            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
+
+            return Limit::perMinute(5)->by($throttleKey);
+        });
+
+        RateLimiter::for('two-factor', function (Request $request) {
+            return Limit::perMinute(5)->by($request->session()->get('login.id'));
+        });
+```
+
+### 2. Automated Session Management
+* **Implementation:** `.env` (`SESSION_LIFETIME`)
+* **Mechanism:** To safeguard user accounts against session hijacking or unauthorized access on shared devices, the application enforces automated session expiration.
+* **Behavior:** User sessions are continuously monitored for inactivity. If a user remains idle for a predefined period (e.g., 10 minutes), the session token is automatically invalidated, forcing the user to re-authenticate upon their next action.
+
+### 3. Secure Password Reset Expiration
+* **Implementation:** `config/auth.php` (`passwords.users.expire`)
+* **Mechanism:** To mitigate the risk of intercepted email links or long-term token exposure, password reset tokens are tightly constrained by time.
+* **Behavior:** When a user requests a password reset link, the generated token remains valid for a strict window of **2 minutes**. Any attempt to use the link after this period will be rejected, requiring a fresh request.
+
+**Code snippet:**
+```php
+    'passwords' => [
+        'users' => [
+            'provider' => 'users',
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 2,
+            'throttle' => 2,
+        ],
+    ],
+```
+
 
 * **III. Authorization:**
 #### A. Initial Security Measures
