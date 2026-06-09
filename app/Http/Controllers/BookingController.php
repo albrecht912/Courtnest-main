@@ -29,40 +29,57 @@ class BookingController extends Controller
         return view('bookings.create', compact('courts', 'bookedSlots'));
     }
 
-    public function store(Request $request)
-    {
+        public function store(Request $request)
+{
+        // Server-side input validation
         $request->validate([
-            'court_id' => 'required|exists:courts,id',
-            'booking_date' => 'required|date|after_or_equal:today',
-            'start_time' => 'required',
-            'duration' => 'required|integer|min:1|max:3', 
-        ]);
+        'court_id' => 'required|integer|exists:courts,id',
+        'booking_date' => 'required|date|after_or_equal:today|before_or_equal:' . now()->addMonths(3)->toDateString(),
+        'start_time' => 'required|date_format:H:i:s|in:08:00:00,09:00:00,10:00:00,11:00:00,12:00:00,13:00:00,14:00:00,15:00:00,16:00:00,17:00:00,18:00:00,19:00:00,20:00:00,21:00:00,22:00:00',
+        'duration' => 'required|integer|min:1|max:3',
+    ]);
 
-        $duration = (int)$request->duration;
-        $newStart = Carbon::parse($request->start_time);
-        $newEnd = (clone $newStart)->addHours($duration);
+    $duration = (int) $request->duration;
+    $newStart = Carbon::parse($request->start_time);
+    $newEnd = (clone $newStart)->addHours($duration);
 
-        if ($request->booking_date == now()->toDateString()) {
-            if ($newStart->lt(now())) {
-                return back()->withErrors(['error' => 'You cannot book a time slot that has already passed today.'])->withInput();
-            }
+    // Prevent booking from exceeding operating hours
+    $latestEndTime = Carbon::parse('23:00:00');
+
+    if ($newEnd->gt($latestEndTime)) {
+        return back()->withErrors([
+            'error' => 'Booking cannot exceed the court operating hours.'
+        ])->withInput();
+    }
+
+    // Prevent booking past time on the current day
+    if ($request->booking_date == now()->toDateString()) {
+        if ($newStart->lt(now())) {
+            return back()->withErrors([
+                'error' => 'You cannot book a time slot that has already passed today.'
+            ])->withInput();
         }
+    }
 
+        // Prevent overlapping bookings
         $overlap = Booking::where('court_id', $request->court_id)
-            ->where('booking_date', $request->booking_date)
-            ->where('status', '!=', 'cancelled')
-            ->get() 
-            ->filter(function ($existing) use ($newStart, $newEnd) {
-                $existingStart = Carbon::parse($existing->start_time);
-                $existingEnd = (clone $existingStart)->addHours((int)$existing->duration);
-                return ($newStart->lt($existingEnd) && $newEnd->gt($existingStart));
-            })->isNotEmpty();
+        ->where('booking_date', $request->booking_date)
+        ->where('status', '!=', 'cancelled')
+        ->get()
+        ->filter(function ($existing) use ($newStart, $newEnd) {
+            $existingStart = Carbon::parse($existing->start_time);
+            $existingEnd = (clone $existingStart)->addHours((int) $existing->duration);
 
-        if ($overlap) {
-            return back()->withErrors(['error' => 'Occupied! The court is reserved during this time range.'])->withInput();
-        }
+            return $newStart->lt($existingEnd) && $newEnd->gt($existingStart);
+        })->isNotEmpty();
 
-        $court = Court::findOrFail($request->court_id);
+    if ($overlap) {
+        return back()->withErrors([
+            'error' => 'Booked! The court is already reserved during this time range.'
+        ])->withInput();
+    }
+
+    $court = Court::findOrFail($request->court_id);
 
         $tempBooking = [
             'user_session_id' => Auth::id(), // Save logged-in user ID to session for validation     
@@ -75,10 +92,10 @@ class BookingController extends Controller
             'total_price' => $court->price_per_hour * $duration,
         ];
 
-        session(['pending_booking' => $tempBooking]);
+    session(['pending_booking' => $tempBooking]);
 
-        return redirect()->route('bookings.checkout');
-    }
+    return redirect()->route('bookings.checkout');
+}
 
     public function checkout()
     {
@@ -130,5 +147,16 @@ class BookingController extends Controller
         session()->forget('pending_booking');
 
         return redirect()->route('dashboard')->with('success', 'Payment Successful! Your court is secured.');
+    }
+
+    public function cancel(Booking $booking)
+    {
+        if ($booking->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $booking->update(['status' => 'cancelled']);
+
+        return back()->with('success', 'Booking has been cancelled.');
     }
 }
