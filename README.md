@@ -2,6 +2,7 @@
 
 * **GROUP MEMBER:** 
 IRFAN HAKEEM BIN KHAIRUDIN (2318729)
+MOHAMMAD MUKHRIZ BIN MISBAHUDDIN (2219587)
 
 
 * **PROJECT TITLE:** COURTNEST - COURT BOOKING SYSTEM
@@ -100,37 +101,104 @@ Explanation: At the final step when the user pays, we double-check their identit
 
 
 * **IV. XSS and CSRF:**
+Cross-Site Scripting (XSS) allows attackers to inject malicious scripts into
+pages viewed by other users. Cross-Site Request Forgery (CSRF) tricks an
+authenticated user's browser into submitting forged requests to the application
+without their knowledge. The following enhancements were applied to the
+CourtNest sports court booking application to address both attack vectors.
+
+### XSS (Cross-Site Scripting) Prevention
+
+#### Enhancement 1 — Blade `{{ }}` Escaped Output on All User-Controlled Data
+
+Laravel's Blade engine automatically HTML-encodes every value rendered through
+`{{ }}`, converting characters like `<`, `>`, `"`, `'`, and `&` into their safe
+HTML entity equivalents. This prevents stored and reflected XSS — even if an
+attacker stored `<script>alert(1)</script>` as their name, Blade would render it
+as the harmless literal string `&lt;script&gt;alert(1)&lt;/script&gt;`.
+
+The unsafe alternative `{!! !!}` (raw, unescaped output) was audited across all
+views and confirmed to be absent from the entire application.
+
+#### Enhancement 2 — Safe JavaScript Context Output Using `json_encode` with Hex-Escape Flags
+
+**File:** `resources/views/bookings/create.blade.php`
+
+A XSS vulnerability existed where booked slot data from the server was embedded
+into an HTML attribute using `@json()`. The `@json()` directive calls PHP's
+`json_encode()` with default flags, which does **not** HTML-encode special
+characters for attribute context. A value containing single quotes (`'`) or angle
+brackets could break out of the attribute boundary and inject into the page.
+
+**Before (Original — Vulnerable):**
+```blade
+<div id="booking-data-bridge" data-booked='@json($bookedSlots)'></div>
+```
+
+**After (Enhanced — Secure):**
+```blade
+<div id="booking-data-bridge" data-booked="{{ json_encode($bookedSlots, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}"></div>
+```
+
+The `JSON_HEX_TAG`, `JSON_HEX_APOS`, `JSON_HEX_QUOT`, and `JSON_HEX_AMP` flags
+force PHP to hex-encode `<`, `>`, `'`, `"`, and `&` as Unicode escape sequences
+(`\u003C`, `\u0027`, etc.), making the output safe for use inside HTML attributes
+regardless of what values the `$bookedSlots` collection contains. The JavaScript
+reading side (`JSON.parse(bridge.getAttribute('data-booked'))`) is unaffected as
+it decodes the JSON normally.
+
+---
+
+### CSRF (Cross-Site Request Forgery) Prevention
+
+#### Enhancement 3 — `@csrf` Directive in All State-Changing Forms
+
+The `@csrf` Blade directive inserts a hidden `_token` field into every form.
+Laravel's CSRF middleware validates this token on every incoming POST, PATCH,
+and DELETE request, comparing it against the value stored in the user's server-side
+session. Since an attacker's forged form on a third-party domain cannot read the
+victim's session token (blocked by the browser's Same-Origin Policy), forged
+requests are automatically rejected with a `419 Page Expired` response.
+
+All four forms in the application were verified to include `@csrf`
+
+#### Enhancement 4 — Explicit CSRF Middleware Configuration
+
+**File:** `app/Http/Middleware/VerifyCsrfToken.php`
+
+An explicit `VerifyCsrfToken` middleware class was created to formally define
+which routes are subject to CSRF verification. The `$except` array is kept
+intentionally empty, confirming that **no routes bypass CSRF protection**.
+
+```php
+<?php
+
+namespace App\Http\Middleware;
+
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken as Middleware;
+
+class VerifyCsrfToken extends Middleware
+{
+    /**
+     * URIs excluded from CSRF verification.
+     * Empty — all POST, PATCH, and DELETE routes are CSRF-protected.
+     *
+     * @var array
+     */
+    protected $except = [
+        //
+    ];
+}
+```
+
+A common developer mistake is adding routes to `$except` to quickly fix `419`
+errors during development and forgetting to remove them before deployment.
+By maintaining this file with an empty `$except` array, the project explicitly
+documents its zero-exclusion CSRF policy.
 
 * **V. Database Security Principles:**
 
-### VI. File Security Principles
-
-#### A. Protecting the Folder Structure (Directory Isolation)
-We make sure our web server (like Apache or Nginx) points its main document root strictly to Laravel's `public/` folder. This acts as a protective firewall. 
-
-Because of this layout, regular internet visitors can only see front-end files like images, CSS, and basic JavaScript. All our core backend system files, controllers, models, and secret configurations are kept safely one level above this folder, making them completely hidden and impossible to reach from a web browser.
-
-#### B. Hiding Secret Settings and Turning Off Debug Mode
-* **Blocking .env Access:** Our database settings and passwords live inside the `.env` file. We configure our server settings (using a `.htaccess` file for Apache) to instantly block anyone who tries to type `http://localhost:8000/.env` into their browser by showing a `403 Forbidden` error.
-* **Disabling Error Debugging:** In our final configuration, we turn off Laravel's debug mode (`APP_DEBUG=false`). If a system error happens, the website will show a simple, safe error page instead of showing our private backend code, database folder paths, or secret keys to strangers.
-
-**Code snippet from web configuration (.htaccess / server rules):**
-
-# Disable directory browsing so users cannot see list of files in a folder
-Options -Indexes
-
-# Block anyone from reading the secret environment settings file directly
-```apache
-<Files .env>
-    Order allow,deny
-    Deny from all
-</Files>
-```
-
-Code snippet from settings file (.env):
-
-# Turn off detailed debug screens to stop code leaking during errors
-APP_DEBUG=false
+* **VI. File Security Principles:**
 
 ---
 
