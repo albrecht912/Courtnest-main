@@ -105,6 +105,31 @@ Explanation: At the final step when the user pays, we double-check their identit
 
 * **VI. File Security Principles:**
 
+#### A. Protecting the Folder Structure (Directory Isolation)
+We make sure our web server (like Apache or Nginx) points its main document root strictly to Laravel's `public/` folder. This acts as a protective firewall. 
+
+Because of this layout, regular internet visitors can only see front-end files like images, CSS, and basic JavaScript. All our core backend system files, controllers, models, and secret configurations are kept safely one level above this folder, making them completely hidden and impossible to reach from a web browser.
+
+#### B. Hiding Secret Settings and Turning Off Debug Mode
+* **Blocking .env Access:** Our database settings and passwords live inside the `.env` file. We configure our server settings (using a `.htaccess` file for Apache) to instantly block anyone who tries to type `http://localhost:8000/.env` into their browser by showing a `403 Forbidden` error.
+* **Disabling Error Debugging:** In our final configuration, we turn off Laravel's debug mode (`APP_DEBUG=false`). If a system error happens, the website will show a simple, safe error page instead of showing our private backend code, database folder paths, or secret keys to strangers.
+
+**Code snippet from web configuration (.htaccess / server rules):**
+```apache
+# Block anyone from reading the secret environment settings file directly
+<Files .env>
+    Order allow,deny
+    Deny from all
+</Files>
+```
+# Disable directory browsing so users cannot see list of files in a folder
+Options -Indexes
+
+Code snippet from settings file (.env):
+
+# Turn off detailed debug screens to stop code leaking during errors
+APP_DEBUG=false
+
 ---
 
 ## d. References
