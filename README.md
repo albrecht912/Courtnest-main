@@ -34,62 +34,68 @@ The specific goals are:
 #### A. Initial Security Measures
 Before making any changes, the system was already built with two strong, built-in walls to block attackers:
 
-1. Route Protection (Login Guard): We wrapped all important pages—like the Dashboard, Checkout, and Payment pages—inside Laravel Jetstream’s login protection (auth:sanctum). If someone who is not logged in tries to type http://localhost:8000/dashboard directly into their browser, the website blocks them instantly and forces them to go to the login page.
+**1. Route Protection (Login Guard):** We wrapped all important pages—like the Dashboard, Checkout, and Payment pages—inside Laravel Jetstream’s login protection (auth:sanctum). If someone who is not logged in tries to type http://localhost:8000/dashboard directly into their browser, the website blocks them instantly and forces them to go to the login page.
 
 **Code snippet:**
+```php
 Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
 ])->group(function () {
-    //  Protected routes go here
+    // Protected routes go here
 });
-
+```
 2. Automatic Identity Binding (Basic IDOR Prevention): When saving a booking to the database, the code completely ignores any identity information coming from the browser. Instead, it locks the booking to whoever is currently logged in using Auth::id():
 
-**Code snippet:**
+Code snippet:
+
+```php
 Booking::create([
     'user_id' => Auth::id(), // Pulls directly from the secure server session
     'court_id' => $data['court_id'],
     ...
 ]);
-
-#### B. New Security Enhancements
+```
+B. New Security Enhancements
 To make the system bulletproof against more advanced tricks (like a user tampering with data mid-transaction or trying to look at someone else's checkout session), we added three explicit upgrades to BookingController.php:
 
 1. Stamping the Session Owner (In the store function)
-**Code snippet:**
-'user_session_id' => Auth::id(), // Save logged-in user ID to session for validation, 
-inside the temporary booking data.
 
+Code snippet:
+
+'user_session_id' => Auth::id(), // Save logged-in user ID to session for validation, inside the temporary booking data.
 Explanation: The very second a user selects a court slot, we don't just temporarily save the court and time. We also write down their exact User ID into that temporary server memory pool. This securely attaches that specific checkout process to that specific logged-in user from the start.
 
 2. The Checkout ID Check (In the checkout function)
 What we added: An if statement that checks if the current user matches the stamped owner, otherwise it triggers a 403 Access Denied.
 
-**Code snippet:**
-// Check if the session belongs to the currently logged-in user
-        if ($booking['user_session_id'] !== Auth::id()) {
-            session()->forget('pending_booking');
-            abort(403, 'Unauthorized action: Session mismatch.');
-        }
+Code snippet:
 
+```php
+// Check if the session belongs to the currently logged-in user
+if ($booking['user_session_id'] !== Auth::id()) {
+    session()->forget('pending_booking');
+    abort(403, 'Unauthorized action: Session mismatch.');
+}
+```
 Explanation: Before showing the checkout summary page, the server checks: "Is the person trying to look at this page the exact same person who started the booking?" If a hacker tries to sneak into or view someone else's active checkout session, the server instantly clears the memory and shows an "Unauthorized Action" error page.
 
 3. Double-Check and Price Tampering Protection (In the pay function)
 What we added: A second identity check, plus a fresh database lookup (Court::findOrFail) to recalculate the price right before saving.
 
-**Code snippet:**
- // Verify the checkout session belongs to the logged-in user
-        if ($data['user_session_id'] !== Auth::id()) {
-            session()->forget('pending_booking');
-            abort(403, 'Unauthorized action.');
-        }
+Code snippet:
 
-        // Fresh database lookup to calculate the correct price right before saving
-        $court = Court::findOrFail($data['court_id']);
-        $validatedPrice = $court->price_per_hour * (int)$data['duration'];
+```php
+// Verify the checkout session belongs to the logged-in user
+if ($data['user_session_id'] !== Auth::id()) {
+    session()->forget('pending_booking');
+    abort(403, 'Unauthorized action.');
+```
 
+// Fresh database lookup to calculate the correct price right before saving
+$court = Court::findOrFail($data['court_id']);
+$validatedPrice = $court->price_per_hour * (int)$data['duration'];
 Explanation: At the final step when the user pays, we double-check their identity one last time for safety. At the same time, instead of blindly trusting the price saved in the session memory, the server reaches into the database to check the real, current price of the court. This means even if someone tries to hack the system memory to change the court price to RM0, the server recalculates it automatically using the real database values, completely stopping payment fraud.
 
 
