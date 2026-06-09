@@ -5,7 +5,7 @@ FOFANA MAMOUDOU KADER (1725503)
 IRFAN HAKEEM BIN KHAIRUDIN (2318729)
 ARIFF ROSTAM HAIKQAL BIN SUBAHIR (2319887)
 MUHAMMAD SYAQEER IMAN BIN ZAINAL (2318495)
-
+MOHAMMAD MUKHRIZ BIN MISBAHUDDIN (2219587)
 
 * **PROJECT TITLE:** COURTNEST - COURT BOOKING SYSTEM
 
@@ -361,6 +361,167 @@ Explanation: At the final step when the user pays, we double-check their identit
 
 
 * **IV. XSS and CSRF:**
+Cross-Site Scripting (XSS) allows attackers to inject malicious scripts into
+pages viewed by other users. Cross-Site Request Forgery (CSRF) tricks an
+authenticated user's browser into submitting forged requests to the application
+without their knowledge. The following enhancements were applied to the
+**CourtNest** sports court booking application to address both attack vectors.
+
+### XSS (Cross-Site Scripting) Prevention
+
+#### Enhancement 1 — Blade `{{ }}` Escaped Output on All User-Controlled Data
+
+Laravel's Blade engine automatically HTML-encodes every value rendered through
+`{{ }}`, converting characters like `<`, `>`, `"`, `'`, and `&` into their safe
+HTML entity equivalents. This prevents stored and reflected XSS — even if an
+attacker stored `<script>alert(1)</script>` as their name, Blade would render it
+as the harmless literal string `&lt;script&gt;alert(1)&lt;/script&gt;`.
+
+The unsafe alternative `{!! !!}` (raw, unescaped output) was audited across all
+views and confirmed to be absent from the entire application.
+
+**`resources/views/dashboard.blade.php` — User profile and all booking data:**
+```blade
+{{-- User identity --}}
+{{ explode(' ', auth()->user()->name)[0] ?? 'Guest' }}
+{{ auth()->user()->email ?? '' }}
+{{ auth()->user()->phone_number ?? '+60 --' }}
+
+{{-- Booking table rows — all database fields escaped --}}
+{{ $booking->court->sport_type ?? 'Sport' }}
+{{ $booking->court->name ?? 'Court' }}
+{{ $booking->id }}
+{{ \Carbon\Carbon::parse($booking->booking_date)->format('d/m/Y') }}
+{{ \Carbon\Carbon::parse($booking->start_time)->format('h:i A') }}
+{{ $booking->duration }}
+{{ number_format($booking->total_price, 2) }}
+```
+
+**`resources/views/profiles/show.blade.php` — Profile page display:**
+```blade
+{{ auth()->user()->name ?? 'Guest' }}
+{{ auth()->user()->email ?? '—' }}
+{{ auth()->user()->phone_number ?? '—' }}
+```
+
+**`resources/views/bookings/checkout.blade.php` — Payment summary:**
+```blade
+{{ $booking->court_name }}
+{{ \Carbon\Carbon::parse($booking->booking_date)->format('D, d M Y') }}
+{{ \Carbon\Carbon::parse($booking->start_time)->format('h:i A') }}
+{{ $booking->duration }}
+{{ number_format($booking->total_price, 2) }}
+```
+
+---
+
+#### Enhancement 2 — Safe JavaScript Context Output Using `json_encode` with Hex-Escape Flags
+
+**File:** `resources/views/bookings/create.blade.php`
+
+A XSS vulnerability existed where booked slot data from the server was embedded
+into an HTML attribute using `@json()`. The `@json()` directive calls PHP's
+`json_encode()` with default flags, which does **not** HTML-encode special
+characters for attribute context. A value containing single quotes (`'`) or angle
+brackets could break out of the attribute boundary and inject into the page.
+
+**Before (Original — Vulnerable):**
+```blade
+<div id="booking-data-bridge" data-booked='@json($bookedSlots)'></div>
+```
+
+**After (Enhanced — Secure):**
+```blade
+<div id="booking-data-bridge" data-booked="{{ json_encode($bookedSlots, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}"></div>
+```
+
+The `JSON_HEX_TAG`, `JSON_HEX_APOS`, `JSON_HEX_QUOT`, and `JSON_HEX_AMP` flags
+force PHP to hex-encode `<`, `>`, `'`, `"`, and `&` as Unicode escape sequences
+(`\u003C`, `\u0027`, etc.), making the output safe for use inside HTML attributes
+regardless of what values the `$bookedSlots` collection contains. The JavaScript
+reading side (`JSON.parse(bridge.getAttribute('data-booked'))`) is unaffected as
+it decodes the JSON normally.
+
+---
+
+### CSRF (Cross-Site Request Forgery) Prevention
+
+#### Enhancement 3 — `@csrf` Directive in All State-Changing Forms
+
+The `@csrf` Blade directive inserts a hidden `_token` field into every form.
+Laravel's CSRF middleware validates this token on every incoming POST, PATCH,
+and DELETE request, comparing it against the value stored in the user's server-side
+session. Since an attacker's forged form on a third-party domain cannot read the
+victim's session token (blocked by the browser's Same-Origin Policy), forged
+requests are automatically rejected with a `419 Page Expired` response.
+
+All four forms in the application were verified to include `@csrf`:
+
+**`resources/views/bookings/create.blade.php` — Booking submission (POST):**
+```blade
+<form action="{{ route('bookings.store') }}" method="POST" id="bookingForm">
+    @csrf
+    {{-- court_id, booking_date, start_time, duration --}}
+</form>
+```
+
+**`resources/views/bookings/checkout.blade.php` — Payment confirmation (POST):**
+```blade
+<form action="{{ route('bookings.pay') }}" method="POST">
+    @csrf
+    {{-- payment_method radio inputs --}}
+</form>
+```
+
+**`resources/views/auth/login.blade.php` — User login (POST):**
+```blade
+<form method="POST" action="{{ route('login') }}">
+    @csrf
+    {{-- email, password --}}
+</form>
+```
+
+**`resources/views/auth/register.blade.php` — User registration (POST):**
+```blade
+<form method="POST" action="{{ route('register') }}">
+    @csrf
+    {{-- name, phone_number, email, password, password_confirmation --}}
+</form>
+```
+
+#### Enhancement 4 — Explicit CSRF Middleware Configuration
+
+**File:** `app/Http/Middleware/VerifyCsrfToken.php`
+
+An explicit `VerifyCsrfToken` middleware class was created to formally define
+which routes are subject to CSRF verification. The `$except` array is kept
+intentionally empty, confirming that **no routes bypass CSRF protection**.
+
+```php
+<?php
+
+namespace App\Http\Middleware;
+
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken as Middleware;
+
+class VerifyCsrfToken extends Middleware
+{
+    /**
+     * URIs excluded from CSRF verification.
+     * Empty — all POST, PATCH, and DELETE routes are CSRF-protected.
+     *
+     * @var array
+     */
+    protected $except = [
+        //
+    ];
+}
+```
+
+A common developer mistake is adding routes to `$except` to quickly fix `419`
+errors during development and forgetting to remove them before deployment.
+By maintaining this file with an empty `$except` array, the project explicitly
+documents its zero-exclusion CSRF policy.
 
 * **V. Database Security Principles:**
 * The Problem: SQL Injection occurs when user input is directly concatenated into SQL queries, allowing attackers to execute malicious database commands.
