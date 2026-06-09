@@ -92,10 +92,16 @@
                                     <i class="bi bi-calendar3 text-[#22C55E]"></i>
                                     Date
                                 </label>
-                                <input type="date" name="booking_date" id="booking_date" required min="{{ date('Y-m-d') }}" value="{{ date('Y-m-d') }}"
-                                    class="w-full rounded-2xl bg-slate-100 border-none px-6 py-5 font-bold text-[#0b1320] shadow-sm focus:ring-4 focus:ring-[#22C55E]/10 transition-all">
-                            </div>
-
+                               <input type="date" 
+                                       name="booking_date" 
+                                       id="booking_date" 
+                                       required 
+                                       min="{{ date('Y-m-d') }}" 
+                                       max="{{ now()->addMonths(3)->toDateString() }}"
+                                       value="{{ date('Y-m-d') }}"
+                                       class="w-full rounded-2xl bg-slate-100 border-none px-6 py-5 font-bold text-[#0b1320] shadow-sm focus:ring-4 focus:ring-[#22C55E]/10 transition-all">
+                            </div> <!-- Adds the maximum 3 months booking limit on the client side. -->
+                                        
                             <div class="space-y-4">
                                 <label class="flex items-center gap-2 text-[#0b1320] font-black uppercase text-[12px] tracking-widest">
                                     <i class="bi bi-hourglass-split text-[#22C55E]"></i>
@@ -188,20 +194,31 @@
                     const optionHour = parseInt(option.value.split(':')[0]);
                     
                     const isPast = (selectedDate === todayStr && optionHour <= currentHour);
-                    const isOccupied = bookedSlots.some(slot => {
-                        if (slot.court_id != selectedCourt || slot.booking_date !== selectedDate) return false;
-                        const endHour = parseInt(slot.start_hour) + parseInt(slot.duration);
-                        return (optionHour >= slot.start_hour && optionHour < endHour);
-                    });
+                    const selectedEndHour = optionHour + selectedDuration;
 
-                    if (isPast || isOccupied) {
+                    const isBooked = bookedSlots.some(slot => {
+                        if (slot.court_id != selectedCourt || slot.booking_date !== selectedDate) return false;
+                    
+                        const bookedStartHour = parseInt(slot.start_hour);
+                        const bookedEndHour = bookedStartHour + parseInt(slot.duration);
+                    
+                        return optionHour < bookedEndHour && selectedEndHour > bookedStartHour;
+                    });
+                    
+                    if (!option.dataset.originalText) {
+                        option.dataset.originalText = option.text;
+                    }
+                    
+                    option.text = option.dataset.originalText;
+                    
+                    if (isPast) {
                         option.disabled = true;
-                        if (!option.text.includes('(')) {
-                            option.text += isPast ? ' (Passed)' : ' (Occupied)';
-                        }
+                        option.text += ' (Passed)';
+                    } else if (isBooked) {
+                        option.disabled = true;
+                        option.text += ' (Booked)';
                     } else {
                         option.disabled = false;
-                        option.text = option.text.replace(' (Passed)', '').replace(' (Occupied)', '');
                     }
                 }
             }
